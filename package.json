@@ -1,0 +1,60 @@
+{
+  "name": "golden-tube",
+  "version": "0.1.0",
+  "private": true,
+  "main": "desktop/main.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "electron:dev": "concurrently -k -n NEXT,ELECTRON -c cyan,magenta \"next dev\" \"wait-on tcp:3000 && node desktop/launch.js\"",
+    "prepare:server": "node scripts/prepare-server.mjs",
+    "electron:build": "next build && node scripts/prepare-server.mjs && electron-builder"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.2",
+    "next": "16.2.9",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^9.1.2",
+    "electron": "^33.3.0",
+    "electron-builder": "^25.1.8",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.9",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "wait-on": "^8.0.2"
+  },
+  "build": {
+    "appId": "com.stanlee.goldentube",
+    "productName": "GoldenTube",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "desktop/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build-resources/server",
+        "to": "server"
+      }
+    ],
+    "win": {
+      "target": ["nsis"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
