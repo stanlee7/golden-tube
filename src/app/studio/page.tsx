@@ -11,6 +11,7 @@ import {
   DURATIONS,
 } from "@/lib/types";
 import { loadProfile, getUsage, consumeUsage, loadEngine } from "@/lib/store";
+import EngineHelp from "@/components/EngineHelp";
 
 export default function StudioPage() {
   const [profile, setProfile] = useState<BrandProfile | null>(null);
@@ -219,7 +220,7 @@ export default function StudioPage() {
               <span className="text-sm text-neutral-400">10~20초 정도 걸려요</span>
             </div>
           )}
-          {error && !loading && <ErrorBox>{error}</ErrorBox>}
+          {error && !loading && <EngineHelp message={error} />}
           {script && !loading && <ResultPackage script={script} onReset={reset} />}
         </section>
       )}

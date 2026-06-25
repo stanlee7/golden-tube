@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BrandProfile } from "@/lib/types";
 import { loadProfile, saveProfile, loadEngine } from "@/lib/store";
+import EngineHelp from "@/components/EngineHelp";
 
 const TONE_SUGGESTIONS = [
   "다정한", "느긋한", "정겨운", "솔직한", "유쾌한",
@@ -173,11 +174,7 @@ export default function OnboardingPage() {
           />
         </Field>
 
-        {error && (
-          <p className="rounded-xl bg-red-50 px-5 py-4 text-base text-red-600 dark:bg-red-950/40">
-            {error}
-          </p>
-        )}
+        {error && <EngineHelp message={error} />}
 
         <button
           type="button"

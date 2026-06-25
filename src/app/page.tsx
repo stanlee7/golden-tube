@@ -37,6 +37,14 @@ export default function Home() {
         <p className="mt-5 text-base text-neutral-400">
           카드 등록 없이 무료 3편 · 1분이면 내 채널 준비 완료
         </p>
+        <p className="mt-4 text-base">
+          <Link
+            href="/settings"
+            className="inline-block rounded-full border-2 border-amber-300 px-5 py-2 font-bold text-amber-700 transition hover:bg-amber-50 dark:border-amber-500/40 dark:text-amber-300"
+          >
+            💡 무료 로컬 AI(Gemma)로 쓰기 · 키 없이 → AI 설정
+          </Link>
+        </p>
       </section>
 
       {/* How it works */}
