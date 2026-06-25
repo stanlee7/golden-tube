@@ -11,6 +11,13 @@ try {
   ollama = null;
 }
 
+let video;
+try {
+  video = require("./video");
+} catch {
+  video = null;
+}
+
 const isDev = !app.isPackaged;
 const DEV_URL = "http://localhost:3000";
 const PROD_PORT = 38520;
@@ -72,6 +79,19 @@ function registerIpc() {
   ipcMain.handle("ollama:pull", (e) =>
     ollama ? ollama.pull(undefined, (p) => e.sender.send("ollama:progress", p)) : false
   );
+
+  // 영상 제작
+  ipcMain.handle("video:render", async (e, args) => {
+    if (!video) throw new Error("영상 제작 기능을 불러오지 못했어요.");
+    const base = isDev ? DEV_URL : PROD_URL;
+    const outPath = await video.render({ ...args, base }, (p) =>
+      e.sender.send("video:progress", p)
+    );
+    return outPath;
+  });
+  ipcMain.handle("video:reveal", (_e, filePath) => {
+    if (filePath) shell.showItemInFolder(filePath);
+  });
 }
 
 app.whenReady().then(async () => {

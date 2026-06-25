@@ -20,4 +20,13 @@ contextBridge.exposeInMainWorld("goldentube", {
     ipcRenderer.on("ollama:progress", h);
     return () => ipcRenderer.removeListener("ollama:progress", h);
   },
+
+  // 영상(.mp4) 제작
+  renderVideo: (args) => ipcRenderer.invoke("video:render", args),
+  revealVideo: (filePath) => ipcRenderer.invoke("video:reveal", filePath),
+  onVideoProgress: (cb) => {
+    const h = (_e, p) => cb(p);
+    ipcRenderer.on("video:progress", h);
+    return () => ipcRenderer.removeListener("video:progress", h);
+  },
 });

@@ -5,11 +5,17 @@ import Anthropic from "@anthropic-ai/sdk";
 
 export type Provider = "claude" | "ollama";
 
+/** 영상 장면 이미지 생성 프로바이더 (현재 OpenAI gpt-image-1) */
+export type ImageProvider = "openai";
+
 export interface EngineConfig {
   provider: Provider;
   claudeApiKey?: string; // 외부 API 키(선택, 기기에만 저장)
   ollamaBaseUrl?: string; // 기본 http://localhost:11434
   ollamaModel?: string; // 기본 gemma3:4b-it-qat (스탠리님 기존 패턴)
+  // 영상용 AI 이미지 생성(선택, 유료)
+  imageProvider?: ImageProvider;
+  imageApiKey?: string; // 이미지 생성 API 키(기기에만 저장)
 }
 
 export const DEFAULT_OLLAMA_URL = "http://localhost:11434";
@@ -23,7 +29,49 @@ export function normalizeEngine(cfg?: Partial<EngineConfig> | null): EngineConfi
     claudeApiKey: cfg?.claudeApiKey?.trim() || undefined,
     ollamaBaseUrl: (cfg?.ollamaBaseUrl?.trim() || DEFAULT_OLLAMA_URL).replace(/\/+$/, ""),
     ollamaModel: cfg?.ollamaModel?.trim() || DEFAULT_OLLAMA_MODEL,
+    imageProvider: "openai",
+    imageApiKey: cfg?.imageApiKey?.trim() || undefined,
   };
+}
+
+/** 장면 이미지 한 장 생성. 반환값은 PNG base64 문자열. */
+export async function generateImage(
+  cfg: EngineConfig,
+  prompt: string,
+  size: "1536x1024" | "1024x1536" | "1024x1024" = "1536x1024"
+): Promise<string> {
+  const apiKey = cfg.imageApiKey || process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "이미지 생성 키가 없어요. 설정에서 이미지 API 키를 넣어 주세요. (영상에 들어갈 그림을 만들 때 필요해요)"
+    );
+  }
+  let res: Response;
+  try {
+    res = await fetch("https://api.openai.com/v1/images/generations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-image-1",
+        prompt,
+        size,
+        n: 1,
+      }),
+    });
+  } catch {
+    throw new Error("이미지 생성 서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.");
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`이미지 생성 오류 (${res.status}). ${detail.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const b64 = data?.data?.[0]?.b64_json;
+  if (!b64) throw new Error("이미지를 받지 못했어요. 다시 시도해 주세요.");
+  return b64;
 }
 
 interface ChatOpts {

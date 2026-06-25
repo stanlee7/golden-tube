@@ -221,7 +221,9 @@ export default function StudioPage() {
             </div>
           )}
           {error && !loading && <EngineHelp message={error} />}
-          {script && !loading && <ResultPackage script={script} onReset={reset} />}
+          {script && !loading && (
+            <ResultPackage script={script} duration={duration} topic={topic} onReset={reset} />
+          )}
         </section>
       )}
     </main>
@@ -279,11 +281,167 @@ function ErrorBox({ children }: { children: React.ReactNode }) {
   );
 }
 
+const RELEASE_URL = "https://github.com/stanlee7/golden-tube/releases/latest";
+
+type VideoBridge = {
+  isElectron: boolean;
+  renderVideo: (args: {
+    script: string;
+    duration: Duration;
+    topic: string;
+    engine: unknown;
+  }) => Promise<string>;
+  revealVideo: (p: string) => Promise<void>;
+  onVideoProgress: (cb: (p: { pct?: number; status?: string }) => void) => () => void;
+};
+
+function getDesktop(): VideoBridge | null {
+  if (typeof window === "undefined") return null;
+  const g = (window as unknown as { goldentube?: VideoBridge }).goldentube;
+  return g?.isElectron ? g : null;
+}
+
+// 결과 화면에서 실제 영상(.mp4) 을 만든다. 데스크톱(로컬 ffmpeg)에서만 작동.
+function VideoMaker({
+  script,
+  duration,
+  topic,
+}: {
+  script: GeneratedScript;
+  duration: Duration;
+  topic: string;
+}) {
+  const [desktop, setDesktop] = useState<VideoBridge | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [pct, setPct] = useState(0);
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [outPath, setOutPath] = useState("");
+
+  useEffect(() => {
+    setDesktop(getDesktop());
+  }, []);
+
+  async function make() {
+    if (!desktop) return;
+    setBusy(true);
+    setError("");
+    setOutPath("");
+    setPct(0);
+    setStatus("준비 중…");
+    const off = desktop.onVideoProgress((p) => {
+      if (typeof p.pct === "number") setPct(p.pct);
+      if (p.status) setStatus(p.status);
+    });
+    try {
+      const out = await desktop.renderVideo({
+        script: script.fullScript,
+        duration,
+        topic,
+        engine: loadEngine(),
+      });
+      setOutPath(out);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "영상 만들기 중 문제가 생겼어요.");
+    } finally {
+      off();
+      setBusy(false);
+    }
+  }
+
+  // 웹에서는 로컬 렌더링이 불가 → 무료 데스크톱 앱 안내
+  if (!desktop) {
+    return (
+      <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-5 dark:border-amber-500/40 dark:bg-amber-500/10">
+        <div className="text-lg font-bold">🎬 영상(.mp4)으로 만들기</div>
+        <p className="mt-1.5 text-base leading-relaxed text-neutral-700 dark:text-neutral-200">
+          대본을 <b>나레이션·자막·그림이 들어간 진짜 영상</b>으로 만드는 기능은
+          무료 데스크톱 앱에서 돼요(내 컴퓨터에서 공짜로 영상이 만들어져요).
+        </p>
+        <a
+          href={RELEASE_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-4 inline-block rounded-xl bg-amber-500 px-5 py-3 text-base font-bold text-white transition hover:bg-amber-600"
+        >
+          🎁 무료 앱 받기
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-5 dark:border-amber-500/40 dark:bg-amber-500/10">
+      <div className="text-lg font-bold">🎬 영상(.mp4)으로 만들기</div>
+      <p className="mt-1.5 text-base leading-relaxed text-neutral-700 dark:text-neutral-200">
+        대본을 장면으로 나눠 <b>AI 그림 + 목소리 + 자막</b>이 들어간 영상을 만들어요.
+        몇 분 걸려요. (그림 만들기에 이미지 키가 필요 ·{" "}
+        <Link href="/settings" className="text-amber-700 underline dark:text-amber-300">
+          설정
+        </Link>
+        )
+      </p>
+
+      {!busy && !outPath && (
+        <button
+          type="button"
+          onClick={make}
+          className="mt-4 w-full rounded-xl bg-amber-500 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-amber-600"
+        >
+          🎬 영상 만들기 시작
+        </button>
+      )}
+
+      {busy && (
+        <div className="mt-4">
+          <div className="mb-2 text-base font-semibold">{status}</div>
+          <div className="h-3 overflow-hidden rounded-full bg-black/10 dark:bg-white/15">
+            <div className="h-full bg-amber-500 transition-all" style={{ width: `${pct}%` }} />
+          </div>
+          <div className="mt-1 text-sm text-neutral-500">{pct}%</div>
+        </div>
+      )}
+
+      {outPath && (
+        <div className="mt-4">
+          <div className="text-lg font-bold">완성됐어요! 🎉</div>
+          <p className="mt-1 break-all text-sm text-neutral-500">{outPath}</p>
+          <button
+            type="button"
+            onClick={() => desktop.revealVideo(outPath)}
+            className="mt-3 rounded-xl bg-amber-500 px-5 py-3 text-base font-bold text-white transition hover:bg-amber-600"
+          >
+            📂 영상 폴더 열기
+          </button>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-4 rounded-xl bg-red-50 px-5 py-4 text-base text-red-600 dark:bg-red-950/40">
+          {error}
+          {error.includes("키") && (
+            <>
+              {" "}
+              <Link href="/settings" className="underline">
+                설정에서 이미지 키 넣기 →
+              </Link>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResultPackage({
   script,
+  duration,
+  topic,
   onReset,
 }: {
   script: GeneratedScript;
+  duration: Duration;
+  topic: string;
   onReset: () => void;
 }) {
   const [copied, setCopied] = useState("");
@@ -323,6 +481,8 @@ function ResultPackage({
           {copied === "전체" ? "복사됐어요!" : "전체 복사"}
         </button>
       </div>
+
+      <VideoMaker script={script} duration={duration} topic={topic} />
 
       {cards.map((c) => (
         <div key={c.key} className="rounded-2xl border-2 border-black/10 p-5 dark:border-white/15">

@@ -30,6 +30,7 @@ export default function SettingsPage() {
   const [claudeApiKey, setClaudeApiKey] = useState("");
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState(DEFAULT_OLLAMA_URL);
   const [ollamaModel, setOllamaModel] = useState(DEFAULT_OLLAMA_MODEL);
+  const [imageApiKey, setImageApiKey] = useState("");
   const [saved, setSaved] = useState(false);
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -40,10 +41,11 @@ export default function SettingsPage() {
     setClaudeApiKey(e.claudeApiKey ?? "");
     setOllamaBaseUrl(e.ollamaBaseUrl ?? DEFAULT_OLLAMA_URL);
     setOllamaModel(e.ollamaModel ?? DEFAULT_OLLAMA_MODEL);
+    setImageApiKey(e.imageApiKey ?? "");
   }, []);
 
   function current(): EngineConfig {
-    return { provider, claudeApiKey, ollamaBaseUrl, ollamaModel };
+    return { provider, claudeApiKey, ollamaBaseUrl, ollamaModel, imageApiKey };
   }
 
   function save() {
@@ -157,6 +159,37 @@ export default function SettingsPage() {
           </p>
         </div>
       )}
+
+      {/* 영상용 이미지 생성 키 */}
+      <h2 className="mt-10 text-2xl font-bold">영상 만들기용 그림 AI</h2>
+      <p className="mt-2 text-base text-neutral-500">
+        영상(.mp4)을 만들 때 장면 그림을 AI로 그려요. OpenAI 이미지 키를 넣어 주세요(유료).
+        영상 기능은 데스크톱 앱에서만 작동해요.
+      </p>
+      <div className="mt-4 rounded-2xl border-2 border-black/10 p-5 dark:border-white/15">
+        <Field label="이미지 생성 API 키 (OpenAI)">
+          <input
+            className={inputCls}
+            type="password"
+            value={imageApiKey}
+            onChange={(e) => setImageApiKey(e.target.value)}
+            placeholder="sk-..."
+            autoComplete="off"
+          />
+        </Field>
+        <p className="mt-2 text-base leading-relaxed text-neutral-500">
+          키는 <b>이 기기에만</b> 저장돼요. 키 발급은{" "}
+          <a
+            href="https://platform.openai.com/api-keys"
+            target="_blank"
+            rel="noreferrer"
+            className="text-amber-600 underline"
+          >
+            platform.openai.com
+          </a>{" "}
+          에서. (장면 1장당 약 70~110원)
+        </p>
+      </div>
 
       {/* 연결 확인 결과 */}
       {result && (
