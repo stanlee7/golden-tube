@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld("goldentube", {
   // 영상(.mp4) 제작
   renderVideo: (args) => ipcRenderer.invoke("video:render", args),
   revealVideo: (filePath) => ipcRenderer.invoke("video:reveal", filePath),
+  pickBgm: () => ipcRenderer.invoke("video:pickBgm"),
   onVideoProgress: (cb) => {
     const h = (_e, p) => cb(p);
     ipcRenderer.on("video:progress", h);

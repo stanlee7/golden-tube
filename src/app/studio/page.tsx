@@ -290,8 +290,10 @@ type VideoBridge = {
     duration: Duration;
     topic: string;
     engine: unknown;
+    bgm?: string;
   }) => Promise<string>;
   revealVideo: (p: string) => Promise<void>;
+  pickBgm?: () => Promise<string | null>;
   onVideoProgress: (cb: (p: { pct?: number; status?: string }) => void) => () => void;
 };
 
@@ -317,10 +319,17 @@ function VideoMaker({
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [outPath, setOutPath] = useState("");
+  const [bgm, setBgm] = useState("");
 
   useEffect(() => {
     setDesktop(getDesktop());
   }, []);
+
+  async function chooseBgm() {
+    if (!desktop?.pickBgm) return;
+    const p = await desktop.pickBgm().catch(() => null);
+    if (p) setBgm(p);
+  }
 
   async function make() {
     if (!desktop) return;
@@ -339,6 +348,7 @@ function VideoMaker({
         duration,
         topic,
         engine: loadEngine(),
+        bgm: bgm || undefined,
       });
       setOutPath(out);
     } catch (e) {
@@ -375,21 +385,49 @@ function VideoMaker({
       <div className="text-lg font-bold">🎬 영상(.mp4)으로 만들기</div>
       <p className="mt-1.5 text-base leading-relaxed text-neutral-700 dark:text-neutral-200">
         대본을 장면으로 나눠 <b>AI 그림 + 목소리 + 자막</b>이 들어간 영상을 만들어요.
-        몇 분 걸려요. (그림 만들기에 이미지 키가 필요 ·{" "}
-        <Link href="/settings" className="text-amber-700 underline dark:text-amber-300">
-          설정
-        </Link>
-        )
+        그림은 <b>무료 AI</b>로 그려서 돈이 안 들어요. 몇 분 걸려요.
       </p>
 
       {!busy && !outPath && (
-        <button
-          type="button"
-          onClick={make}
-          className="mt-4 w-full rounded-xl bg-amber-500 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-amber-600"
-        >
-          🎬 영상 만들기 시작
-        </button>
+        <>
+          {desktop.pickBgm && (
+            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-white/60 px-4 py-3 dark:bg-black/20">
+              <span className="text-base font-semibold">🎵 배경음악 (선택)</span>
+              {bgm ? (
+                <>
+                  <span className="max-w-[16rem] truncate text-sm text-neutral-500">
+                    {bgm.split(/[\\/]/).pop()}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setBgm("")}
+                    className="rounded-lg border border-black/15 px-3 py-1.5 text-sm dark:border-white/20"
+                  >
+                    빼기
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={chooseBgm}
+                  className="rounded-lg border border-amber-400 px-3 py-1.5 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 dark:text-amber-300"
+                >
+                  내 음악 파일 고르기
+                </button>
+              )}
+              <span className="w-full text-sm text-neutral-400">
+                내 컴퓨터의 음악 파일(mp3 등)을 잔잔하게 깔아 드려요. 저작권 무료 음악을 쓰세요.
+              </span>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={make}
+            className="mt-4 w-full rounded-xl bg-amber-500 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-amber-600"
+          >
+            🎬 영상 만들기 시작
+          </button>
+        </>
       )}
 
       {busy && (
@@ -431,6 +469,165 @@ function VideoMaker({
       )}
     </div>
   );
+}
+
+// 썸네일 자동 생성 — 무료 그림 AI로 배경을 그리고, 썸네일 큰 글자를 합성해 PNG로 저장.
+// 캔버스 합성이라 웹·데스크톱 어디서든 작동한다.
+function ThumbnailMaker({ prompt, text }: { prompt: string; text: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [dataUrl, setDataUrl] = useState("");
+
+  async function make() {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: `${prompt}, YouTube thumbnail background, bold and warm, leave the lower third simple for text overlay, no text`,
+          size: "1536x1024",
+          engine: loadEngine(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "그림을 만들지 못했어요.");
+      setDataUrl(await composeThumbnail(data.image, text));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "썸네일 만들기 중 문제가 생겼어요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-5 dark:border-amber-500/40 dark:bg-amber-500/10">
+      <div className="text-lg font-bold">🖼️ 썸네일 사진 자동으로 만들기</div>
+      <p className="mt-1.5 text-base leading-relaxed text-neutral-700 dark:text-neutral-200">
+        <b>무료 AI 그림 + 큰 글자</b>를 합쳐 유튜브에 바로 올릴 썸네일 사진을 만들어 드려요.
+      </p>
+
+      {!dataUrl && (
+        <button
+          type="button"
+          onClick={make}
+          disabled={busy}
+          className="mt-4 w-full rounded-xl bg-amber-500 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-amber-600 disabled:opacity-60"
+        >
+          {busy ? "🎨 그림을 그리는 중… (10~30초)" : "🖼️ 썸네일 만들기"}
+        </button>
+      )}
+
+      {dataUrl && (
+        <div className="mt-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={dataUrl}
+            alt="완성된 썸네일"
+            className="w-full rounded-xl border border-black/10 dark:border-white/15"
+          />
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+            <a
+              href={dataUrl}
+              download="황금튜브-썸네일.png"
+              className="flex-1 rounded-xl bg-amber-500 px-5 py-3 text-center text-base font-bold text-white transition hover:bg-amber-600"
+            >
+              💾 사진 저장하기
+            </a>
+            <button
+              type="button"
+              onClick={make}
+              disabled={busy}
+              className="rounded-xl border-2 border-amber-400 px-5 py-3 text-base font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-60 dark:text-amber-300"
+            >
+              {busy ? "다시 그리는 중…" : "🔄 다른 그림으로"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-4 rounded-xl bg-red-50 px-5 py-4 text-base text-red-600 dark:bg-red-950/40">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** AI 그림(base64) 위에 썸네일 큰 글자를 얹어 1280x720 PNG data URL로 합성 */
+async function composeThumbnail(b64: string, text: string): Promise<string> {
+  // mime 을 모르니 octet-stream 으로 받아 createImageBitmap 이 내용을 보고 해독하게 한다
+  const blob = await (await fetch(`data:application/octet-stream;base64,${b64}`)).blob();
+  const bmp = await createImageBitmap(blob);
+  const W = 1280;
+  const H = 720;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("이 기기에서는 그림 합성을 지원하지 않아요.");
+
+  // 배경을 꽉 채우기 (cover)
+  const scale = Math.max(W / bmp.width, H / bmp.height);
+  const dw = bmp.width * scale;
+  const dh = bmp.height * scale;
+  ctx.drawImage(bmp, (W - dw) / 2, (H - dh) / 2, dw, dh);
+
+  // 아래쪽을 살짝 어둡게 해 글자가 잘 보이게
+  const grad = ctx.createLinearGradient(0, H * 0.35, 0, H);
+  grad.addColorStop(0, "rgba(0,0,0,0)");
+  grad.addColorStop(1, "rgba(0,0,0,0.6)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // 글자 크기를 줄여가며 3줄 이내로 맞춤
+  const raw = text.replace(/\r/g, "").trim();
+  const maxW = W - 120;
+  let fontSize = 118;
+  let lines: string[] = [raw];
+  while (fontSize >= 56) {
+    ctx.font = `900 ${fontSize}px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`;
+    lines = wrapForCanvas(ctx, raw, maxW);
+    if (lines.length <= 3 && lines.every((l) => ctx.measureText(l).width <= maxW)) break;
+    fontSize -= 8;
+  }
+
+  const lineHeight = fontSize * 1.2;
+  let y = H - 56 - (lines.length - 1) * lineHeight;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(0,0,0,0.92)";
+  ctx.lineWidth = Math.max(10, fontSize * 0.16);
+  ctx.fillStyle = "#ffe94d"; // 유튜브에서 눈에 잘 띄는 노랑
+  for (const line of lines) {
+    ctx.strokeText(line, W / 2, y);
+    ctx.fillText(line, W / 2, y);
+    y += lineHeight;
+  }
+  return canvas.toDataURL("image/png");
+}
+
+/** 캔버스 폭에 맞게 어절 단위 줄바꿈 */
+function wrapForCanvas(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+  const lines: string[] = [];
+  for (const para of text.split("\n")) {
+    const words = para.split(/\s+/).filter(Boolean);
+    let cur = "";
+    for (const w of words) {
+      const joined = cur ? `${cur} ${w}` : w;
+      if (ctx.measureText(joined).width > maxW && cur) {
+        lines.push(cur);
+        cur = w;
+      } else {
+        cur = joined;
+      }
+    }
+    if (cur) lines.push(cur);
+  }
+  return lines;
 }
 
 function ResultPackage({
@@ -484,6 +681,8 @@ function ResultPackage({
 
       <VideoMaker script={script} duration={duration} topic={topic} />
 
+      <ThumbnailMaker prompt={script.thumbnailPrompt} text={script.thumbnailText} />
+
       {cards.map((c) => (
         <div key={c.key} className="rounded-2xl border-2 border-black/10 p-5 dark:border-white/15">
           <div className="mb-2 flex items-center justify-between">
@@ -514,10 +713,10 @@ function ResultPackage({
         <p className="whitespace-pre-wrap text-lg leading-relaxed">{script.monetizeTip}</p>
       </div>
 
-      {/* 썸네일 묘사(이미지 생성용 — 다음 버전에서 자동 생성 예정) */}
+      {/* 썸네일 묘사(위 자동 생성에 쓰는 원문 — 다른 그림 도구에 붙여넣어도 됨) */}
       <details className="rounded-2xl border-2 border-dashed border-black/15 p-5 dark:border-white/15">
         <summary className="cursor-pointer text-base font-semibold text-neutral-500">
-          🎨 썸네일 사진 묘사 보기 (그림 만들 때 사용)
+          🎨 썸네일 사진 묘사 보기 (다른 그림 도구에 쓸 때)
         </summary>
         <div className="mt-3 flex items-start justify-between gap-3">
           <p className="text-base leading-relaxed text-neutral-600 dark:text-neutral-300">

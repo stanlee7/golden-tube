@@ -5,8 +5,10 @@ import Anthropic from "@anthropic-ai/sdk";
 
 export type Provider = "claude" | "ollama";
 
-/** 영상 장면 이미지 생성 프로바이더 (현재 OpenAI gpt-image-1) */
-export type ImageProvider = "openai";
+/** 영상 장면 이미지 생성 프로바이더
+ *  - "pollinations": 무료(키 불필요, pollinations.ai) — 기본값
+ *  - "openai": gpt-image-1 (유료, 내 키 필요, 더 정교함) */
+export type ImageProvider = "pollinations" | "openai";
 
 export interface EngineConfig {
   provider: Provider;
@@ -29,21 +31,64 @@ export function normalizeEngine(cfg?: Partial<EngineConfig> | null): EngineConfi
     claudeApiKey: cfg?.claudeApiKey?.trim() || undefined,
     ollamaBaseUrl: (cfg?.ollamaBaseUrl?.trim() || DEFAULT_OLLAMA_URL).replace(/\/+$/, ""),
     ollamaModel: cfg?.ollamaModel?.trim() || DEFAULT_OLLAMA_MODEL,
-    imageProvider: "openai",
+    imageProvider: cfg?.imageProvider === "openai" ? "openai" : "pollinations",
     imageApiKey: cfg?.imageApiKey?.trim() || undefined,
   };
 }
+
+export type ImageSize = "1536x1024" | "1024x1536" | "1024x1024";
 
 /** 장면 이미지 한 장 생성. 반환값은 PNG base64 문자열. */
 export async function generateImage(
   cfg: EngineConfig,
   prompt: string,
-  size: "1536x1024" | "1024x1536" | "1024x1024" = "1536x1024"
+  size: ImageSize = "1536x1024"
+): Promise<string> {
+  if (cfg.imageProvider !== "openai") {
+    return generatePollinations(prompt, size);
+  }
+  return generateOpenAI(cfg, prompt, size);
+}
+
+/** 무료 이미지 생성 (pollinations.ai, 키 불필요). 혼잡할 수 있어 3회까지 재시도. */
+async function generatePollinations(prompt: string, size: ImageSize): Promise<string> {
+  const [w, h] = size.split("x").map(Number);
+  let lastError = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 4000 * attempt));
+    const seed = Math.floor(Math.random() * 1e9);
+    const url =
+      `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
+      `?width=${w}&height=${h}&seed=${seed}&nologo=true`;
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(100_000) });
+      if (!res.ok) {
+        lastError = `무료 그림 서버 오류 (${res.status})`;
+        continue;
+      }
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length < 1000) {
+        lastError = "무료 그림 서버가 빈 그림을 보냈어요.";
+        continue;
+      }
+      return buf.toString("base64");
+    } catch {
+      lastError = "무료 그림 서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.";
+    }
+  }
+  throw new Error(`${lastError} 잠시 후 다시 시도해 주세요.`);
+}
+
+/** OpenAI gpt-image-1 (유료, 선택) */
+async function generateOpenAI(
+  cfg: EngineConfig,
+  prompt: string,
+  size: ImageSize
 ): Promise<string> {
   const apiKey = cfg.imageApiKey || process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error(
-      "이미지 생성 키가 없어요. 설정에서 이미지 API 키를 넣어 주세요. (영상에 들어갈 그림을 만들 때 필요해요)"
+      "OpenAI 이미지 키가 없어요. 설정에서 키를 넣거나, 무료 그림 AI로 바꿔 주세요."
     );
   }
   let res: Response;

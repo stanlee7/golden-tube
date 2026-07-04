@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { EngineConfig, Provider } from "@/lib/engine";
+import type { EngineConfig, Provider, ImageProvider } from "@/lib/engine";
 import { loadEngine, saveEngine } from "@/lib/store";
 
 // engine.ts 는 Claude SDK 를 포함하므로 클라이언트 번들을 위해 기본값만 이 파일에 둔다.
@@ -30,6 +30,7 @@ export default function SettingsPage() {
   const [claudeApiKey, setClaudeApiKey] = useState("");
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState(DEFAULT_OLLAMA_URL);
   const [ollamaModel, setOllamaModel] = useState(DEFAULT_OLLAMA_MODEL);
+  const [imageProvider, setImageProvider] = useState<ImageProvider>("pollinations");
   const [imageApiKey, setImageApiKey] = useState("");
   const [saved, setSaved] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -41,11 +42,12 @@ export default function SettingsPage() {
     setClaudeApiKey(e.claudeApiKey ?? "");
     setOllamaBaseUrl(e.ollamaBaseUrl ?? DEFAULT_OLLAMA_URL);
     setOllamaModel(e.ollamaModel ?? DEFAULT_OLLAMA_MODEL);
+    setImageProvider(e.imageProvider === "openai" ? "openai" : "pollinations");
     setImageApiKey(e.imageApiKey ?? "");
   }, []);
 
   function current(): EngineConfig {
-    return { provider, claudeApiKey, ollamaBaseUrl, ollamaModel, imageApiKey };
+    return { provider, claudeApiKey, ollamaBaseUrl, ollamaModel, imageProvider, imageApiKey };
   }
 
   function save() {
@@ -160,36 +162,53 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* 영상용 이미지 생성 키 */}
-      <h2 className="mt-10 text-2xl font-bold">영상 만들기용 그림 AI</h2>
+      {/* 영상·썸네일용 그림 AI */}
+      <h2 className="mt-10 text-2xl font-bold">그림 AI (영상 장면 · 썸네일)</h2>
       <p className="mt-2 text-base text-neutral-500">
-        영상(.mp4)을 만들 때 장면 그림을 AI로 그려요. OpenAI 이미지 키를 넣어 주세요(유료).
-        영상 기능은 데스크톱 앱에서만 작동해요.
+        영상(.mp4) 장면과 썸네일 그림을 AI로 그려요. <b>기본은 무료</b>라 아무것도 안 해도 바로 돼요.
       </p>
-      <div className="mt-4 rounded-2xl border-2 border-black/10 p-5 dark:border-white/15">
-        <Field label="이미지 생성 API 키 (OpenAI)">
-          <input
-            className={inputCls}
-            type="password"
-            value={imageApiKey}
-            onChange={(e) => setImageApiKey(e.target.value)}
-            placeholder="sk-..."
-            autoComplete="off"
-          />
-        </Field>
-        <p className="mt-2 text-base leading-relaxed text-neutral-500">
-          키는 <b>이 기기에만</b> 저장돼요. 키 발급은{" "}
-          <a
-            href="https://platform.openai.com/api-keys"
-            target="_blank"
-            rel="noreferrer"
-            className="text-amber-600 underline"
-          >
-            platform.openai.com
-          </a>{" "}
-          에서. (장면 1장당 약 70~110원)
-        </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <EngineCard
+          on={imageProvider === "pollinations"}
+          onClick={() => setImageProvider("pollinations")}
+          title="무료 그림 AI"
+          desc="키 없이 공짜로 그림을 그려요. 그림 한 장에 10~30초 정도 걸려요."
+          badge="추천 · 무료"
+        />
+        <EngineCard
+          on={imageProvider === "openai"}
+          onClick={() => setImageProvider("openai")}
+          title="OpenAI 그림 (선택)"
+          desc="더 정교한 그림. 내 OpenAI 키를 붙여넣어 사용해요."
+          badge="유료 · 선택"
+        />
       </div>
+      {imageProvider === "openai" && (
+        <div className="mt-4 rounded-2xl border-2 border-black/10 p-5 dark:border-white/15">
+          <Field label="이미지 생성 API 키 (OpenAI)">
+            <input
+              className={inputCls}
+              type="password"
+              value={imageApiKey}
+              onChange={(e) => setImageApiKey(e.target.value)}
+              placeholder="sk-..."
+              autoComplete="off"
+            />
+          </Field>
+          <p className="mt-2 text-base leading-relaxed text-neutral-500">
+            키는 <b>이 기기에만</b> 저장돼요. 키 발급은{" "}
+            <a
+              href="https://platform.openai.com/api-keys"
+              target="_blank"
+              rel="noreferrer"
+              className="text-amber-600 underline"
+            >
+              platform.openai.com
+            </a>{" "}
+            에서. (장면 1장당 약 70~110원)
+          </p>
+        </div>
+      )}
 
       {/* 연결 확인 결과 */}
       {result && (

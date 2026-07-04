@@ -1,7 +1,7 @@
 // 황금튜브 데스크톱(Electron) 메인 프로세스
 // dev: next dev(localhost:3000) 로드
 // prod: 동봉한 Next.js standalone 서버(server.js)를 메인 프로세스에서 직접 구동 후 로드
-const { app, BrowserWindow, shell, ipcMain } = require("electron");
+const { app, BrowserWindow, shell, ipcMain, dialog } = require("electron");
 const path = require("path");
 
 let ollama;
@@ -91,6 +91,16 @@ function registerIpc() {
   });
   ipcMain.handle("video:reveal", (_e, filePath) => {
     if (filePath) shell.showItemInFolder(filePath);
+  });
+  // 배경음악 파일 고르기(선택)
+  ipcMain.handle("video:pickBgm", async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      title: "배경음악 파일 고르기",
+      properties: ["openFile"],
+      filters: [{ name: "음악 파일", extensions: ["mp3", "m4a", "wav", "aac", "ogg", "flac"] }],
+    });
+    return canceled ? null : filePaths[0] || null;
   });
 }
 

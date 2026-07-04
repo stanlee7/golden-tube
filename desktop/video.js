@@ -74,12 +74,27 @@ function ffprobeDuration(file) {
   });
 }
 
+/** 장면마다 다른 카메라 움직임(켄번즈) — 단조로움을 줄인다 */
+function kenBurns(i, frames) {
+  const center = `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`;
+  switch (i % 4) {
+    case 0: // 천천히 다가가기
+      return `zoompan=z='min(zoom+0.0008,1.15)':${center}`;
+    case 1: // 천천히 물러나기
+      return `zoompan=z='if(lte(zoom,1.0),1.15,max(1.0,zoom-0.0008))':${center}`;
+    case 2: // 오른쪽으로 흐르기
+      return `zoompan=z=1.12:x='(iw-iw/zoom)*on/${frames}':y='ih/2-(ih/zoom/2)'`;
+    default: // 왼쪽으로 흐르기
+      return `zoompan=z=1.12:x='(iw-iw/zoom)*(1-on/${frames})':y='ih/2-(ih/zoom/2)'`;
+  }
+}
+
 /**
  * 영상 제작. onProgress({pct, status}) 로 진행 보고. 완성된 .mp4 경로 반환.
- * opts: { base, engine, script, duration, topic, voice }
+ * opts: { base, engine, script, duration, topic, voice, bgm }
  */
 async function render(opts, onProgress = () => {}) {
-  const { base, engine, script, duration, topic, voice } = opts;
+  const { base, engine, script, duration, topic, voice, bgm } = opts;
   const isShorts = duration === "shorts";
   const VW = isShorts ? 1080 : 1920;
   const VH = isShorts ? 1920 : 1080;
@@ -119,20 +134,23 @@ async function render(opts, onProgress = () => {}) {
       const capPath = path.join(work, `cap${i}.txt`);
       fs.writeFileSync(capPath, wrap(sc.narration, wrapN), "utf-8");
 
-      // 4) 클립 = 이미지(켄번즈) + 나레이션 + 자막
+      // 4) 클립 = 이미지(켄번즈) + 나레이션 + 자막 + 장면 페이드(부드러운 전환)
       const clipPath = path.join(work, `clip${i}.mp4`);
       const frames = Math.ceil(dur * 25);
+      const fadeOutAt = Math.max(0, dur - 0.4).toFixed(2);
       const vf =
         `[0:v]scale=${VW}:${VH}:force_original_aspect_ratio=increase,crop=${VW}:${VH},` +
-        `zoompan=z='min(zoom+0.0006,1.12)':d=${frames}:s=${VW}x${VH}:fps=25,setsar=1,` +
+        `${kenBurns(i, frames)}:d=${frames}:s=${VW}x${VH}:fps=25,setsar=1,` +
         `drawtext=fontfile='${FONT}':textfile='${ffPath(capPath)}':fontcolor=white:fontsize=${fontSize}:` +
-        `line_spacing=10:box=1:boxcolor=black@0.55:boxborderw=22:x=(w-text_w)/2:y=h-text_h-${bottom}[v]`;
+        `line_spacing=10:box=1:boxcolor=black@0.55:boxborderw=22:x=(w-text_w)/2:y=h-text_h-${bottom},` +
+        `fade=t=in:st=0:d=0.4,fade=t=out:st=${fadeOutAt}:d=0.4[v];` +
+        `[1:a]afade=t=in:st=0:d=0.2,afade=t=out:st=${Math.max(0, dur - 0.3).toFixed(2)}:d=0.3[a]`;
       await run(ffmpegPath, [
         "-y",
         "-loop", "1", "-i", imgPath,
         "-i", mp3Path,
         "-filter_complex", vf,
-        "-map", "[v]", "-map", "1:a",
+        "-map", "[v]", "-map", "[a]",
         "-t", String(dur),
         "-r", "25",
         "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
@@ -154,10 +172,36 @@ async function render(opts, onProgress = () => {}) {
     const outDir = path.join(os.homedir(), "Videos", "황금튜브");
     fs.mkdirSync(outDir, { recursive: true });
     const outPath = path.join(outDir, `goldentube_${Date.now()}.mp4`);
+    const useBgm = bgm && fs.existsSync(bgm);
+    const mergedPath = useBgm ? path.join(work, "merged.mp4") : outPath;
     await run(ffmpegPath, [
       "-y", "-f", "concat", "-safe", "0", "-i", listPath,
-      "-c", "copy", outPath,
+      "-c", "copy", mergedPath,
     ]);
+
+    // 6) 배경음악(선택) — 잔잔하게 깔고 끝에서 서서히 줄임
+    if (useBgm) {
+      onProgress({ pct: 96, status: "배경음악을 입히는 중…" });
+      const total = await ffprobeDuration(mergedPath);
+      const fadeAt = Math.max(0, total - 2).toFixed(2);
+      try {
+        await run(ffmpegPath, [
+          "-y",
+          "-i", mergedPath,
+          "-stream_loop", "-1", "-i", bgm,
+          "-filter_complex",
+          `[1:a]volume=0.14[b];[0:a][b]amix=inputs=2:duration=first:dropout_transition=2:normalize=0,` +
+            `afade=t=out:st=${fadeAt}:d=2[a]`,
+          "-map", "0:v", "-map", "[a]",
+          "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+          "-shortest",
+          outPath,
+        ]);
+      } catch {
+        // 음악 파일이 이상하면 음악 없이라도 영상은 완성시킨다
+        fs.copyFileSync(mergedPath, outPath);
+      }
+    }
 
     onProgress({ pct: 100, status: "영상이 완성됐어요!" });
     return outPath;
